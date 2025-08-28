@@ -12,12 +12,12 @@ import platform
 IS_WINDOWS = platform.system() == "Windows"
 if IS_WINDOWS:
     try:
-        import windows_capture
+        from windows_capture import WindowsCapture, Frame, InternalCaptureControl
     except ImportError:
         print("Windows-specific capture library not found. Falling back to MSS.")
-        windows_capture = None
+        WindowsCapture = None
 else:
-    windows_capture = None
+    WindowsCapture = None
 
 class Recorder:
     def __init__(self):
@@ -51,10 +51,8 @@ class Recorder:
             print("Recording Stopped")
 
     def record(self, window=None):
-        print(f"[DEBUG] RECORDER: Record method called with window: {window}")
         if window:
-            # Use the best available window capture method
-            if IS_WINDOWS and windows_capture:
+            if IS_WINDOWS and WindowsCapture:
                 self._record_window_api(window)
             else:
                 self._record_window_mss(window)
@@ -86,28 +84,30 @@ class Recorder:
             return None
 
     def _record_window_api(self, window):
-        """Records a specific window using the Windows Graphics Capture API."""
+        """Records a specific window using the event-driven Windows Graphics Capture API."""
         print("Using modern Windows Graphics Capture API.")
         try:
-            capture = windows_capture.WindowsCapture(window_title=window.title)
+            capture = WindowsCapture(window_name=window.title)
             w, h = capture.get_width(), capture.get_height()
 
             fourcc = cv2.VideoWriter_fourcc(*"mp4v")
             self.video_writer = cv2.VideoWriter(self.output_filename, fourcc, self.target_fps, (w, h))
-            frame_time = 1.0 / self.target_fps
+
+            @capture.event
+            def on_frame_arrived(frame: Frame, capture_control: InternalCaptureControl):
+                if not self.is_recording:
+                    capture_control.stop()
+                    return
+                self.video_writer.write(frame.frame_buffer)
+
+            @capture.event
+            def on_closed():
+                print("Capture session closed.")
 
             capture.start()
             while self.is_recording:
-                frame_start_time = time.time()
-                frame = capture.get_latest_frame()
-                if frame is not None:
-                    self.video_writer.write(frame)
-                
-                elapsed_time = time.time() - frame_start_time
-                sleep_time = frame_time - elapsed_time
-                if sleep_time > 0:
-                    time.sleep(sleep_time)
-            capture.stop()
+                time.sleep(0.1)
+
         except Exception as e:
             print(f"Windows Graphics Capture failed: {e}")
             print("Falling back to screen-region capture method.")
