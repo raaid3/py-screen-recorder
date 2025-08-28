@@ -12,7 +12,7 @@ import platform
 IS_WINDOWS = platform.system() == "Windows"
 if IS_WINDOWS:
     try:
-        from windows_capture import WindowsCapture, Frame, InternalCaptureControl
+        from windows_capture import WindowsCapture
     except ImportError:
         print("Windows-specific capture library not found. Falling back to MSS.")
         WindowsCapture = None
@@ -84,7 +84,7 @@ class Recorder:
             return None
 
     def _record_window_api(self, window):
-        """Records a specific window using the event-driven Windows Graphics Capture API."""
+        """Records a specific window using the Windows Graphics Capture API."""
         print("Using modern Windows Graphics Capture API.")
         try:
             capture = WindowsCapture(window_name=window.title)
@@ -92,22 +92,20 @@ class Recorder:
 
             fourcc = cv2.VideoWriter_fourcc(*"mp4v")
             self.video_writer = cv2.VideoWriter(self.output_filename, fourcc, self.target_fps, (w, h))
-
-            @capture.event
-            def on_frame_arrived(frame: Frame, capture_control: InternalCaptureControl):
-                if not self.is_recording:
-                    capture_control.stop()
-                    return
-                self.video_writer.write(frame.frame_buffer)
-
-            @capture.event
-            def on_closed():
-                print("Capture session closed.")
+            frame_time = 1.0 / self.target_fps
 
             capture.start()
             while self.is_recording:
-                time.sleep(0.1)
-
+                frame_start_time = time.time()
+                frame = capture.get_latest_frame()
+                if frame is not None:
+                    self.video_writer.write(frame)
+                
+                elapsed_time = time.time() - frame_start_time
+                sleep_time = frame_time - elapsed_time
+                if sleep_time > 0:
+                    time.sleep(sleep_time)
+            capture.stop()
         except Exception as e:
             print(f"Windows Graphics Capture failed: {e}")
             print("Falling back to screen-region capture method.")
