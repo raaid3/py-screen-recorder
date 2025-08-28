@@ -13,12 +13,13 @@ class Recorder:
         self.recording_thread = None
         self.output_filename = ""
         self.video_writer = None
+        self.target_fps = 30.0
 
     def get_available_windows(self):
         """Returns a list of window titles and their corresponding objects."""
         windows = pywinctl.getAllWindows()
         # Filter out windows with no title or that are not valid for capture
-        return [win for win in windows if win.title and win.isvisible]
+        return [win for win in windows if win.title and win.isVisible]
 
     def start_recording(self, window=None):
         """Starts the recording on a separate thread."""
@@ -79,46 +80,58 @@ class Recorder:
     def _record_window(self, window):
         """Records a specific window."""
         try:
-            # Use the window's box property for dimensions
-            # Box is a named tuple: Box(left, top, width, height)
             w, h = window.size
-
             if w <= 0 or h <= 0:
                 print("Window has invalid dimensions (e.g., minimized). Cannot record.")
                 return
 
             fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-            self.video_writer = cv2.VideoWriter(self.output_filename, fourcc, 15.0, (w, h))
+            self.video_writer = cv2.VideoWriter(self.output_filename, fourcc, self.target_fps, (w, h))
+            frame_time = 1.0 / self.target_fps
 
             with mss.mss() as sct:
-                # Define the monitor region to capture based on the window
                 monitor = {"top": window.top, "left": window.left, "width": w, "height": h}
-                fps_delay = 1.0 / 15.0
 
                 while self.is_recording:
+                    frame_start_time = time.time()
+
                     if not window.isAlive or not window.isVisible:
                         print("Window was closed or is no longer visible. Stopping.")
                         break
 
-                    # Grab the data
                     sct_img = sct.grab(monitor)
                     frame = np.array(sct_img)
                     frame = cv2.cvtColor(frame, cv2.COLOR_BGRA2BGR)
                     self.video_writer.write(frame)
-                    time.sleep(fps_delay)
+
+                    elapsed_time = time.time() - frame_start_time
+                    sleep_time = frame_time - elapsed_time
+                    if sleep_time > 0:
+                        time.sleep(sleep_time)
 
         except Exception as e:
             print(f"An error occurred during window recording: {e}")
 
     def _record_screen(self):
         """Records the entire screen."""
-        with mss.mss() as sct:
-            monitor = sct.monitors[1]
-            fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-            self.video_writer = cv2.VideoWriter(self.output_filename, fourcc, 20.0, (monitor['width'], monitor['height']))
+        try:
+            with mss.mss() as sct:
+                monitor = sct.monitors[1]
+                fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+                self.video_writer = cv2.VideoWriter(self.output_filename, fourcc, self.target_fps, (monitor['width'], monitor['height']))
+                frame_time = 1.0 / self.target_fps
 
-            while self.is_recording:
-                sct_img = sct.grab(monitor)
-                frame = np.array(sct_img)
-                frame = cv2.cvtColor(frame, cv2.COLOR_BGRA2BGR)
-                self.video_writer.write(frame)
+                while self.is_recording:
+                    frame_start_time = time.time()
+
+                    sct_img = sct.grab(monitor)
+                    frame = np.array(sct_img)
+                    frame = cv2.cvtColor(frame, cv2.COLOR_BGRA2BGR)
+                    self.video_writer.write(frame)
+
+                    elapsed_time = time.time() - frame_start_time
+                    sleep_time = frame_time - elapsed_time
+                    if sleep_time > 0:
+                        time.sleep(sleep_time)
+        except Exception as e:
+            print(f"An error occurred during screen recording: {e}")

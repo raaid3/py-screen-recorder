@@ -87,7 +87,7 @@ class ScreenRecorderUI(ctk.CTk):
             # Resize frame to fit the preview label
             label_w, label_h = self.preview_label.winfo_width(), self.preview_label.winfo_height()
             if label_w < 2 or label_h < 2: # Skip if label not rendered yet
-                self.after(100, self.update_preview_loop)
+                self.after(250, self.update_preview_loop)
                 return
 
             h, w, _ = frame.shape
@@ -106,7 +106,7 @@ class ScreenRecorderUI(ctk.CTk):
         else:
             self.preview_label.configure(image=None, text="Could not get preview for the selected target.")
 
-        self.after(100, self.update_preview_loop)
+        self.after(250, self.update_preview_loop)
 
     def toggle_theme(self):
         mode = "light" if self.theme_switch.get() == 0 else "dark"
