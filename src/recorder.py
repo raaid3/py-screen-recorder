@@ -6,6 +6,18 @@ from datetime import datetime
 import os
 import time
 import pywinctl
+import platform
+
+# Attempt to import the Windows-specific library
+IS_WINDOWS = platform.system() == "Windows"
+if IS_WINDOWS:
+    try:
+        import windows_capture
+    except ImportError:
+        print("Windows-specific capture library not found. Falling back to MSS.")
+        windows_capture = None
+else:
+    windows_capture = None
 
 class Recorder:
     def __init__(self):
@@ -18,17 +30,14 @@ class Recorder:
     def get_available_windows(self):
         """Returns a list of window titles and their corresponding objects."""
         windows = pywinctl.getAllWindows()
-        # Filter out windows with no title or that are not valid for capture
-        return [win for win in windows if win.title and win.isVisible]
+        return [win for win in windows if win.title and win.isvisible]
 
     def start_recording(self, window=None):
-        """Starts the recording on a separate thread."""
         self.is_recording = True
         output_dir = "recordings"
         os.makedirs(output_dir, exist_ok=True)
         now = datetime.now()
         self.output_filename = os.path.join(output_dir, f"rec_{now.strftime('%Y%m%d_%H%M%S')}.mp4")
-
         self.recording_thread = threading.Thread(target=self.record, args=(window,))
         self.recording_thread.start()
         print("Recording Started")
@@ -42,11 +51,14 @@ class Recorder:
             print("Recording Stopped")
 
     def record(self, window=None):
-        """Dispatches to the correct recording method."""
         if window:
-            self._record_window(window)
+            # Use the best available window capture method
+            if IS_WINDOWS and windows_capture:
+                self._record_window_api(window)
+            else:
+                self._record_window_mss(window)
         else:
-            self._record_screen()
+            self._record_screen_mss()
 
         if self.video_writer:
             self.video_writer.release()
@@ -54,36 +66,59 @@ class Recorder:
             print(f"Recording saved to {self.output_filename}")
 
     def get_frame(self, window=None):
-        """Grabs a single frame from the specified window or the full screen."""
+        """Grabs a single frame. Prefers screen-region capture for previews for simplicity."""
         try:
             with mss.mss() as sct:
                 if window:
                     if not window.isAlive or not window.isVisible:
                         return None
-                    
                     w, h = window.size
-                    if w <= 0 or h <= 0:
-                        return None
-
+                    if w <= 0 or h <= 0: return None
                     monitor = {"top": window.top, "left": window.left, "width": w, "height": h}
                     sct_img = sct.grab(monitor)
                 else:
-                    # Full screen
                     monitor = sct.monitors[1]
                     sct_img = sct.grab(monitor)
-
                 frame = np.array(sct_img)
                 return cv2.cvtColor(frame, cv2.COLOR_BGRA2BGR)
         except Exception:
             return None
 
-    def _record_window(self, window):
-        """Records a specific window."""
+    def _record_window_api(self, window):
+        """Records a specific window using the Windows Graphics Capture API."""
+        print("Using modern Windows Graphics Capture API.")
+        try:
+            hwnd = window.getHandle()
+            capture = windows_capture.WindowsCapture(window_hwnd=hwnd)
+            w, h = capture.get_width(), capture.get_height()
+
+            fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+            self.video_writer = cv2.VideoWriter(self.output_filename, fourcc, self.target_fps, (w, h))
+            frame_time = 1.0 / self.target_fps
+
+            capture.start()
+            while self.is_recording:
+                frame_start_time = time.time()
+                frame = capture.get_latest_frame()
+                if frame is not None:
+                    self.video_writer.write(frame)
+                
+                elapsed_time = time.time() - frame_start_time
+                sleep_time = frame_time - elapsed_time
+                if sleep_time > 0:
+                    time.sleep(sleep_time)
+            capture.stop()
+        except Exception as e:
+            print(f"Windows Graphics Capture failed: {e}")
+            print("Falling back to screen-region capture method.")
+            self._record_window_mss(window)
+
+    def _record_window_mss(self, window):
+        """Records a specific window using the MSS screen-region capture method."""
+        print("Using cross-platform screen-region capture (MSS).")
         try:
             w, h = window.size
-            if w <= 0 or h <= 0:
-                print("Window has invalid dimensions (e.g., minimized). Cannot record.")
-                return
+            if w <= 0 or h <= 0: return
 
             fourcc = cv2.VideoWriter_fourcc(*"mp4v")
             self.video_writer = cv2.VideoWriter(self.output_filename, fourcc, self.target_fps, (w, h))
@@ -91,44 +126,34 @@ class Recorder:
 
             with mss.mss() as sct:
                 monitor = {"top": window.top, "left": window.left, "width": w, "height": h}
-
                 while self.is_recording:
                     frame_start_time = time.time()
-
-                    if not window.isAlive or not window.isVisible:
-                        print("Window was closed or is no longer visible. Stopping.")
-                        break
-
+                    if not window.isAlive or not window.isVisible: break
                     sct_img = sct.grab(monitor)
                     frame = np.array(sct_img)
                     frame = cv2.cvtColor(frame, cv2.COLOR_BGRA2BGR)
                     self.video_writer.write(frame)
-
                     elapsed_time = time.time() - frame_start_time
                     sleep_time = frame_time - elapsed_time
                     if sleep_time > 0:
                         time.sleep(sleep_time)
-
         except Exception as e:
-            print(f"An error occurred during window recording: {e}")
+            print(f"An error occurred during MSS window recording: {e}")
 
-    def _record_screen(self):
-        """Records the entire screen."""
+    def _record_screen_mss(self):
+        """Records the entire screen using MSS."""
         try:
             with mss.mss() as sct:
                 monitor = sct.monitors[1]
                 fourcc = cv2.VideoWriter_fourcc(*"mp4v")
                 self.video_writer = cv2.VideoWriter(self.output_filename, fourcc, self.target_fps, (monitor['width'], monitor['height']))
                 frame_time = 1.0 / self.target_fps
-
                 while self.is_recording:
                     frame_start_time = time.time()
-
                     sct_img = sct.grab(monitor)
                     frame = np.array(sct_img)
                     frame = cv2.cvtColor(frame, cv2.COLOR_BGRA2BGR)
                     self.video_writer.write(frame)
-
                     elapsed_time = time.time() - frame_start_time
                     sleep_time = frame_time - elapsed_time
                     if sleep_time > 0:
