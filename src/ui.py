@@ -18,6 +18,7 @@ class ScreenRecorderUI(ctk.CTk):
         self.windows = []
         self.title_to_window = {}
         self.selected_target = ctk.StringVar(value="Full Screen")
+        self.is_preview_active = True
 
         # Layout
         self.grid_columnconfigure(0, weight=0)
@@ -68,6 +69,9 @@ class ScreenRecorderUI(ctk.CTk):
 
     def toggle_recording(self):
         if not self.recorder.is_recording:
+            self.is_preview_active = False
+            self.preview_label.configure(image=None, text="Preview paused during recording...")
+            
             target_title = self.selected_target.get()
             window_to_record = self.title_to_window.get(target_title)
             
@@ -76,17 +80,23 @@ class ScreenRecorderUI(ctk.CTk):
         else:
             self.recorder.stop_recording()
             self.record_button.configure(text="Record", fg_color=["#3a7ebf", "#1f538d"], hover_color=["#325882", "#14375e"])
+            
+            self.is_preview_active = True
+            self.update_preview_loop()
 
     def update_preview_loop(self):
+        if not self.is_preview_active:
+            self.after(250, self.update_preview_loop)
+            return
+
         target_title = self.selected_target.get()
         window_to_preview = self.title_to_window.get(target_title)
 
         frame = self.recorder.get_frame(window=window_to_preview)
 
         if frame is not None:
-            # Resize frame to fit the preview label
             label_w, label_h = self.preview_label.winfo_width(), self.preview_label.winfo_height()
-            if label_w < 2 or label_h < 2: # Skip if label not rendered yet
+            if label_w < 2 or label_h < 2:
                 self.after(250, self.update_preview_loop)
                 return
 
@@ -96,13 +106,12 @@ class ScreenRecorderUI(ctk.CTk):
             
             resized_frame = cv2.resize(frame, (new_w, new_h))
             
-            # Convert for display
             rgb_frame = cv2.cvtColor(resized_frame, cv2.COLOR_BGR2RGB)
             img = Image.fromarray(rgb_frame)
             imgtk = ImageTk.PhotoImage(image=img)
 
             self.preview_label.configure(image=imgtk, text="")
-            self.preview_label.image = imgtk # Keep a reference
+            self.preview_label.image = imgtk
         else:
             self.preview_label.configure(image=None, text="Could not get preview for the selected target.")
 
