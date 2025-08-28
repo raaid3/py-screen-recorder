@@ -73,7 +73,9 @@ class ScreenRecorderUI(ctk.CTk):
             self.preview_label.configure(image=None, text="Preview paused during recording...")
             
             target_title = self.selected_target.get()
+            print(f"[DEBUG] UI: Selected target title: '{target_title}'")
             window_to_record = self.title_to_window.get(target_title)
+            print(f"[DEBUG] UI: Found window object: {window_to_record}")
             
             self.recorder.start_recording(window=window_to_record)
             self.record_button.configure(text="Stop", fg_color="#DB4437", hover_color="#C53929")

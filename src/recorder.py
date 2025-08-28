@@ -51,6 +51,7 @@ class Recorder:
             print("Recording Stopped")
 
     def record(self, window=None):
+        print(f"[DEBUG] RECORDER: Record method called with window: {window}")
         if window:
             # Use the best available window capture method
             if IS_WINDOWS and windows_capture:
