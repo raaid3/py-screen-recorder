@@ -89,7 +89,7 @@ class Recorder:
         """Records a specific window using the Windows Graphics Capture API."""
         print("Using modern Windows Graphics Capture API.")
         try:
-            capture = windows_capture.WindowsCapture(window.title)
+            capture = windows_capture.WindowsCapture(window_title=window.title)
             w, h = capture.get_width(), capture.get_height()
 
             fourcc = cv2.VideoWriter_fourcc(*"mp4v")
