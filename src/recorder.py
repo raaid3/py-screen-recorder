@@ -30,7 +30,7 @@ class Recorder:
     def get_available_windows(self):
         """Returns a list of window titles and their corresponding objects."""
         windows = pywinctl.getAllWindows()
-        return [win for win in windows if win.title and win.isvisible]
+        return [win for win in windows if win.title and win.isVisible]
 
     def start_recording(self, window=None):
         self.is_recording = True
@@ -89,8 +89,7 @@ class Recorder:
         """Records a specific window using the Windows Graphics Capture API."""
         print("Using modern Windows Graphics Capture API.")
         try:
-            hwnd = window.getHandle()
-            capture = windows_capture.WindowsCapture(window_hwnd=hwnd)
+            capture = windows_capture.WindowsCapture(window.title)
             w, h = capture.get_width(), capture.get_height()
 
             fourcc = cv2.VideoWriter_fourcc(*"mp4v")

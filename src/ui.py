@@ -110,10 +110,9 @@ class ScreenRecorderUI(ctk.CTk):
             
             rgb_frame = cv2.cvtColor(resized_frame, cv2.COLOR_BGR2RGB)
             img = Image.fromarray(rgb_frame)
-            imgtk = ImageTk.PhotoImage(image=img)
+            ctk_image = ctk.CTkImage(light_image=img, dark_image=img, size=img.size)
 
-            self.preview_label.configure(image=imgtk, text="")
-            self.preview_label.image = imgtk
+            self.preview_label.configure(image=ctk_image, text="")
         else:
             self.preview_label.configure(image=None, text="Could not get preview for the selected target.")
 
